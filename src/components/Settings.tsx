@@ -101,6 +101,32 @@ export function Settings() {
     }
   };
 
+  const handleDeleteHistoryOlderThan = async (days: number) => {
+    const label = `超过 ${days} 天`;
+    if (!window.confirm(`确定要删除${label}的对话记录吗？此操作不可恢复。`)) return;
+
+    setIsClearingCache(true);
+    try {
+      const now = Date.now();
+      const cutoff = now - days * 24 * 60 * 60 * 1000;
+      const targetSessions = sessions.filter((session) => session.updatedAt < cutoff);
+
+      if (targetSessions.length === 0) {
+        window.alert(`没有${label}的对话记录。`);
+        return;
+      }
+
+      for (const session of targetSessions) {
+        await deleteSession(session.id);
+      }
+
+      await refreshCacheSize();
+      window.alert(`已删除 ${targetSessions.length} 个${label}的对话。`);
+    } finally {
+      setIsClearingCache(false);
+    }
+  };
+
   // Load API key from secure storage when provider changes
   useEffect(() => {
     loadApiKeyFromSecureStorage();
@@ -666,17 +692,54 @@ export function Settings() {
             <Trash2 className="w-4 h-4 text-yellow-500" />
           </button>
 
-          {/* Clear All History Button */}
-          <button
-            onClick={handleClearAllHistory}
-            disabled={isClearingCache}
-            className="w-full flex items-center justify-between px-4 py-3 bg-red-50 dark:bg-red-900/20 rounded-lg hover:bg-red-100 dark:hover:bg-red-900/30 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            <span className="text-sm text-red-700 dark:text-red-300">
-              {isClearingCache ? '删除中...' : '删除所有对话记录'}
-            </span>
-            <Trash2 className="w-4 h-4 text-red-500" />
-          </button>
+          <div className="bg-red-50 dark:bg-red-900/20 rounded-lg p-3 space-y-2">
+            <p className="text-xs text-red-700 dark:text-red-300 font-medium">按时间删除对话</p>
+            <div className="grid grid-cols-1 gap-2">
+              <button
+                onClick={() => handleDeleteHistoryOlderThan(7)}
+                disabled={isClearingCache}
+                className="w-full flex items-center justify-between px-3 py-2.5 bg-white/80 dark:bg-red-900/30 rounded-lg hover:bg-white dark:hover:bg-red-900/40 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                <span className="text-sm text-red-700 dark:text-red-300">
+                  {isClearingCache ? '删除中...' : '删除 > 7 天'}
+                </span>
+                <Trash2 className="w-4 h-4 text-red-500" />
+              </button>
+
+              <button
+                onClick={() => handleDeleteHistoryOlderThan(3)}
+                disabled={isClearingCache}
+                className="w-full flex items-center justify-between px-3 py-2.5 bg-white/80 dark:bg-red-900/30 rounded-lg hover:bg-white dark:hover:bg-red-900/40 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                <span className="text-sm text-red-700 dark:text-red-300">
+                  {isClearingCache ? '删除中...' : '删除 > 3 天'}
+                </span>
+                <Trash2 className="w-4 h-4 text-red-500" />
+              </button>
+
+              <button
+                onClick={() => handleDeleteHistoryOlderThan(1)}
+                disabled={isClearingCache}
+                className="w-full flex items-center justify-between px-3 py-2.5 bg-white/80 dark:bg-red-900/30 rounded-lg hover:bg-white dark:hover:bg-red-900/40 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                <span className="text-sm text-red-700 dark:text-red-300">
+                  {isClearingCache ? '删除中...' : '删除 > 1 天'}
+                </span>
+                <Trash2 className="w-4 h-4 text-red-500" />
+              </button>
+            </div>
+
+            <button
+              onClick={handleClearAllHistory}
+              disabled={isClearingCache}
+              className="w-full flex items-center justify-between px-3 py-2.5 bg-red-100 dark:bg-red-900/40 rounded-lg hover:bg-red-200 dark:hover:bg-red-900/60 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              <span className="text-sm text-red-700 dark:text-red-300">
+                {isClearingCache ? '删除中...' : '删除所有对话记录'}
+              </span>
+              <Trash2 className="w-4 h-4 text-red-500" />
+            </button>
+          </div>
         </div>
       </main>
 

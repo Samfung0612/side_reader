@@ -1,6 +1,11 @@
 import { isToday, isYesterday, isThisWeek } from 'date-fns';
-import { Plus, Trash2, MessageSquare } from 'lucide-react';
+import { Plus, Trash2, MessageSquare, Download } from 'lucide-react';
 import { useStore, Session } from '../store';
+import {
+  downloadFile,
+  exportSingleSessionAsJSON,
+  buildSingleChatFilename,
+} from '../utils/exportUtils';
 
 export function HistoryDrawer() {
   const { 
@@ -10,7 +15,10 @@ export function HistoryDrawer() {
     currentSessionId, 
     createNewSession, 
     switchSession, 
-    deleteSession 
+    deleteSession,
+    agents,
+    apiProvider,
+    providerConfigs,
   } = useStore();
 
   if (!isDrawerOpen) return null;
@@ -30,6 +38,27 @@ export function HistoryDrawer() {
   }, {} as Record<string, Session[]>);
 
   const groups = ['今天', '昨天', '过去 7 天', '更早'].filter(g => groupedSessions[g]);
+
+  const handleExportSingleSession = (session: Session) => {
+    try {
+      const jsonOptions = {
+        format: 'json' as const,
+        includeHistory: true,
+        includeAgents: true,
+        includeSettings: false,
+      };
+
+      const jsonContent = exportSingleSessionAsJSON(
+        session,
+        agents,
+        { apiProvider, providerConfigs },
+        jsonOptions
+      );
+      downloadFile(jsonContent, buildSingleChatFilename(session, 'json'), 'application/json');
+    } catch (error) {
+      console.error('Failed to export session:', error);
+    }
+  };
 
   return (
     <>
@@ -77,6 +106,17 @@ export function HistoryDrawer() {
                       {session.title}
                     </div>
                     
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleExportSingleSession(session);
+                      }}
+                      className="absolute right-9 p-1.5 opacity-0 group-hover:opacity-100 hover:bg-blue-50 dark:hover:bg-blue-900/30 rounded-md transition-all shrink-0"
+                      title="导出此对话"
+                    >
+                      <Download className="w-3.5 h-3.5 text-blue-500" />
+                    </button>
+
                     <button
                       onClick={(e) => {
                         e.stopPropagation();

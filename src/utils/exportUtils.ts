@@ -20,6 +20,22 @@ export interface ExportData {
   };
 }
 
+/** Creates a filename-safe slug from a chat title */
+function sanitizeFilenamePart(input: string): string {
+  return input
+    .trim()
+    .replace(/[\\/:*?"<>|]/g, '')
+    .replace(/\s+/g, '-')
+    .slice(0, 40) || 'chat';
+}
+
+/** Builds a single chat export filename */
+export function buildSingleChatFilename(session: Session, extension: 'json' | 'md'): string {
+  const date = new Date(session.updatedAt).toISOString().slice(0, 10);
+  const titleSlug = sanitizeFilenamePart(session.title);
+  return `luminasider-chat-${date}-${titleSlug}.${extension}`;
+}
+
 /** Triggers a file download in the browser */
 export function downloadFile(content: string, filename: string, mimeType: string): void {
   const blob = new Blob([content], { type: mimeType });
@@ -172,4 +188,23 @@ export function exportAsMarkdown(
   }
 
   return lines.join('\n');
+}
+
+/** Exports one session as JSON while preserving bulk export format */
+export function exportSingleSessionAsJSON(
+  session: Session,
+  agents: Agent[],
+  settings: { apiProvider: ApiProvider; providerConfigs: Record<ApiProvider, ProviderConfig> },
+  options: ExportOptions
+): string {
+  return exportAsJSON([session], agents, settings, options);
+}
+
+/** Exports one session as Markdown while preserving bulk export format */
+export function exportSingleSessionAsMarkdown(
+  session: Session,
+  agents: Agent[],
+  options: ExportOptions
+): string {
+  return exportAsMarkdown([session], agents, options);
 }
