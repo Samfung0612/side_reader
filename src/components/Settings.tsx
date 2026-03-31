@@ -32,6 +32,7 @@ export function Settings() {
   const [localBaseUrl, setLocalBaseUrl] = useState(currentConfig.baseUrl || '');
   const [localModel, setLocalModel] = useState(currentConfig.model || '');
   const [localModels, setLocalModels] = useState<string[]>(activeEntry?.models || [currentConfig.model].filter(Boolean));
+  const [selectedFetchedModel, setSelectedFetchedModel] = useState('');
 
   const [availableModels, setAvailableModels] = useState<ModelInfo[]>([]);
   const [isLoadingModels, setIsLoadingModels] = useState(false);
@@ -137,6 +138,7 @@ export function Settings() {
     setLocalBaseUrl(entry.config.baseUrl);
     setLocalModel(entry.config.model);
     setLocalModels(entry.models?.length ? entry.models : [entry.config.model].filter(Boolean));
+    setSelectedFetchedModel('');
 
     if (hasMasterPassword && isUnlocked) {
       const secureKey = await SecureStorage.getApiKeyForEntry(entry.id) || await SecureStorage.getApiKey(entry.provider);
@@ -211,6 +213,7 @@ export function Settings() {
     setLocalBaseUrl(newConfig.baseUrl);
     setLocalModel(newConfig.model);
     setLocalModels([newConfig.model].filter(Boolean));
+    setSelectedFetchedModel('');
 
     if (hasMasterPassword && isUnlocked && entry) {
       const secureKey = await SecureStorage.getApiKeyForEntry(entry.id) || await SecureStorage.getApiKey(newProvider);
@@ -261,6 +264,7 @@ export function Settings() {
     const entry = providerEntries.find((item) => item.id === entryId) || null;
     await loadEditorFromEntry(entry);
     setAvailableModels([]);
+    setSelectedFetchedModel('');
     setModelError('');
   };
 
@@ -344,9 +348,7 @@ export function Settings() {
             return { name: cleanName, displayName: m.displayName || cleanName };
           });
           setAvailableModels(modelsList);
-          if (modelsList.length > 0 && !modelsList.find((m: ModelInfo) => m.name === localModel)) {
-            setLocalModel(modelsList[0].name);
-          }
+          setSelectedFetchedModel('');
         } else {
           throw new Error('Invalid response format');
         }
@@ -357,9 +359,7 @@ export function Settings() {
           { name: 'claude-3-opus-20240229', displayName: 'Claude 3 Opus' },
         ];
         setAvailableModels(modelsList);
-        if (!modelsList.find((m: ModelInfo) => m.name === localModel)) {
-          setLocalModel(modelsList[0].name);
-        }
+        setSelectedFetchedModel('');
       } else if (localApiProvider === 'ollama') {
         let url = `${cleanBaseUrl}/api/tags`;
         if (cleanBaseUrl.endsWith('/v1')) {
@@ -376,9 +376,7 @@ export function Settings() {
             displayName: m.name
           }));
           setAvailableModels(modelsList);
-          if (modelsList.length > 0 && !modelsList.find((m: ModelInfo) => m.name === localModel)) {
-            setLocalModel(modelsList[0].name);
-          }
+          setSelectedFetchedModel('');
         } else {
           throw new Error('Invalid response format');
         }
@@ -401,9 +399,7 @@ export function Settings() {
             displayName: m.id
           }));
           setAvailableModels(modelsList);
-          if (modelsList.length > 0 && !modelsList.find((m: ModelInfo) => m.name === localModel)) {
-            setLocalModel(modelsList[0].name);
-          }
+          setSelectedFetchedModel('');
         } else {
           throw new Error('Invalid response format');
         }
@@ -544,7 +540,7 @@ export function Settings() {
               添加提供商
             </button>
           </div>
-          <div className="space-y-2">
+          <div className="space-y-2 max-h-56 overflow-y-auto pr-1">
             {providerEntries.map((entry) => (
               <div
                 key={entry.id}
@@ -556,7 +552,7 @@ export function Settings() {
                     className="text-left flex-1"
                   >
                     <div className="text-sm font-medium text-gray-800 dark:text-gray-200">{entry.name}</div>
-                    <div className="text-xs text-gray-500">{entry.provider} · {entry.config.model}</div>
+                    <div className="text-xs text-gray-500">{entry.provider} · 已保存 {entry.models?.length || 0} 个模型</div>
                   </button>
                   <div className="flex items-center gap-2">
                     <button
@@ -662,7 +658,7 @@ export function Settings() {
         <div className="space-y-2">
           <div className="flex items-center justify-between">
             <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
-              模型选择
+              可用模型
             </label>
             <button
               onClick={fetchModels}
@@ -674,16 +670,13 @@ export function Settings() {
             </button>
           </div>
           <select
-            value={localModel}
-            onChange={(e) => {
-              const selected = e.target.value;
-              setLocalModel(selected);
-              handleAddModelToList(selected);
-            }}
+            value={selectedFetchedModel}
+            onChange={(e) => setSelectedFetchedModel(e.target.value)}
             disabled={isLoadingModels}
             aria-label="模型选择"
             className="w-full px-3 py-2 bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-700 rounded-md focus:outline-none focus:ring-2 focus:ring-accent focus:border-transparent disabled:bg-gray-50 disabled:dark:bg-gray-800"
           >
+            <option value="">选择一个模型加入列表</option>
             {availableModels.map((m) => (
               <option key={m.name} value={m.name}>
                 {m.displayName}
@@ -699,15 +692,18 @@ export function Settings() {
               <p className="text-xs font-medium text-gray-600 dark:text-gray-300">已保存模型列表</p>
               <button
                 type="button"
-                onClick={() => handleAddModelToList(localModel)}
-                disabled={!localModel}
+                onClick={() => {
+                  handleAddModelToList(selectedFetchedModel);
+                  setSelectedFetchedModel('');
+                }}
+                disabled={!selectedFetchedModel}
                 className="text-xs px-2 py-1 rounded-md border border-gray-300 dark:border-gray-700 hover:bg-gray-100 dark:hover:bg-gray-800 disabled:opacity-50"
               >
-                添加当前模型
+                加入模型列表
               </button>
             </div>
             {localModels.length === 0 ? (
-              <p className="text-xs text-gray-500">当前未保存模型，先从上方选择一个模型。</p>
+              <p className="text-xs text-gray-500">当前未保存模型，从上方获取后加入模型列表即可。</p>
             ) : (
               <div className="flex flex-wrap gap-2">
                 {localModels.map((model) => (

@@ -23,6 +23,8 @@ export function InputArea() {
     providerConfigs,
     activeProviderEntryId,
     getActiveProviderEntry,
+    providerEntries,
+    updateProviderEntry,
     addMessage,
     useContext,
     setUseContext,
@@ -60,6 +62,11 @@ export function InputArea() {
     text: agentPlaceholder,
     isClickable: isClickable
   };
+
+  const activeProviderEntry = providerEntries.find((entry) => entry.id === activeProviderEntryId) || getActiveProviderEntry();
+  const activeModels = activeProviderEntry?.models?.length
+    ? activeProviderEntry.models
+    : (activeProviderEntry?.config.model ? [activeProviderEntry.config.model] : []);
 
   useEffect(() => {
     if (textareaRef.current) {
@@ -296,6 +303,15 @@ export function InputArea() {
     }
   };
 
+  const handleModelChange = (nextModel: string) => {
+    if (!activeProviderEntry) return;
+    const nextModels = Array.from(new Set([...(activeProviderEntry.models || []), nextModel].filter(Boolean)));
+    updateProviderEntry(activeProviderEntry.id, {
+      config: { model: nextModel },
+      models: nextModels,
+    });
+  };
+
   const isSubmitDisabled = (!input.trim() && stagedAttachments.length === 0) || isGenerating;
 
   return (
@@ -409,6 +425,31 @@ export function InputArea() {
           </button>
         )}
       </div>
+
+      {(activeProviderEntry || activeModels.length > 0) && (
+        <div className="mt-2 flex items-center justify-between gap-3 px-1">
+          <div className="min-w-0 flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400">
+            <span className="truncate rounded-md bg-gray-100 dark:bg-gray-800 px-2 py-1 text-gray-700 dark:text-gray-300">
+              {activeProviderEntry?.name || '当前提供商'}
+            </span>
+          </div>
+
+          {activeModels.length > 0 && (
+            <select
+              value={activeProviderEntry?.config.model || ''}
+              onChange={(e) => handleModelChange(e.target.value)}
+              aria-label="底部模型切换"
+              className="max-w-[180px] md:max-w-[240px] text-xs px-2.5 py-1.5 rounded-md border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-700 dark:text-gray-200"
+            >
+              {activeModels.map((model) => (
+                <option key={model} value={model}>
+                  {model}
+                </option>
+              ))}
+            </select>
+          )}
+        </div>
+      )}
     </div>
   );
 }
