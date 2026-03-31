@@ -24,6 +24,7 @@ export function InputArea() {
     activeProviderEntryId,
     getActiveProviderEntry,
     providerEntries,
+    setActiveProviderEntry,
     updateProviderEntry,
     addMessage,
     useContext,
@@ -427,27 +428,40 @@ export function InputArea() {
       </div>
 
       {(activeProviderEntry || activeModels.length > 0) && (
-        <div className="mt-2 flex items-center justify-between gap-3 px-1">
-          <div className="min-w-0 flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400">
-            <span className="truncate rounded-md bg-gray-100 dark:bg-gray-800 px-2 py-1 text-gray-700 dark:text-gray-300">
-              {activeProviderEntry?.name || '当前提供商'}
-            </span>
-          </div>
-
-          {activeModels.length > 0 && (
+        <div className="mt-2 flex items-center justify-between gap-2 px-1">
+          <div className="flex min-w-0 items-center gap-2 overflow-hidden">
             <select
-              value={activeProviderEntry?.config.model || ''}
-              onChange={(e) => handleModelChange(e.target.value)}
-              aria-label="底部模型切换"
-              className="max-w-[180px] md:max-w-[240px] text-xs px-2.5 py-1.5 rounded-md border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-700 dark:text-gray-200"
+              value={activeProviderEntry?.id || ''}
+              onChange={(e) => setActiveProviderEntry(e.target.value)}
+              aria-label="底部提供商切换"
+              className="max-w-[170px] md:max-w-[220px] text-xs px-2.5 py-1.5 rounded-md border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-700 dark:text-gray-200"
             >
-              {activeModels.map((model) => (
-                <option key={model} value={model}>
-                  {model}
+              {providerEntries.map((entry) => (
+                <option key={entry.id} value={entry.id}>
+                  {entry.name}
                 </option>
               ))}
             </select>
-          )}
+
+            {activeModels.length > 0 && (
+              <select
+                value={activeProviderEntry?.config.model || ''}
+                onChange={(e) => handleModelChange(e.target.value)}
+                aria-label="底部模型切换"
+                className="max-w-[160px] md:max-w-[220px] text-xs px-2.5 py-1.5 rounded-md border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-700 dark:text-gray-200"
+              >
+                {activeModels.map((model) => (
+                  <option key={model} value={model}>
+                    {model}
+                  </option>
+                ))}
+              </select>
+            )}
+          </div>
+
+          <div className="hidden md:block text-[11px] text-gray-500 dark:text-gray-400 truncate max-w-[140px]">
+            {activeProviderEntry?.provider || 'provider'}
+          </div>
         </div>
       )}
     </div>
