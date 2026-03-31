@@ -21,6 +21,8 @@ export function InputArea() {
   const {
     apiProvider,
     providerConfigs,
+    activeProviderEntryId,
+    getActiveProviderEntry,
     addMessage,
     useContext,
     setUseContext,
@@ -33,7 +35,7 @@ export function InputArea() {
   // Check secure storage for API key
   useEffect(() => {
     loadSecureApiKey();
-  }, [apiProvider]);
+  }, [apiProvider, activeProviderEntryId]);
 
   const loadSecureApiKey = async () => {
     const hasPassword = await SecureStorage.hasMasterPassword();
@@ -169,8 +171,19 @@ export function InputArea() {
       return;
     }
 
-    const currentConfig = providerConfigs[apiProvider];
-    if (!currentConfig.apiKey && apiProvider !== 'ollama') {
+    const activeEntry = getActiveProviderEntry();
+    const currentProvider = activeEntry?.provider || apiProvider;
+    const currentConfig = activeEntry?.config || providerConfigs[currentProvider];
+
+    let effectiveApiKey = currentConfig?.apiKey || '';
+    if (!effectiveApiKey) {
+      const secureApiKey = activeEntry
+        ? (await SecureStorage.getApiKeyForEntry(activeEntry.id)) || (await SecureStorage.getApiKey(currentProvider))
+        : await SecureStorage.getApiKey(currentProvider);
+      effectiveApiKey = secureApiKey || '';
+    }
+
+    if (!effectiveApiKey && currentProvider !== 'ollama' && currentProvider !== 'anthropic') {
       alert('请先在设置中配置 API Key');
       return;
     }
@@ -240,8 +253,19 @@ export function InputArea() {
     }
 
     // 直接使用占位符文本发送消息
-    const currentConfig = providerConfigs[apiProvider];
-    if (!currentConfig.apiKey && apiProvider !== 'ollama') {
+    const activeEntry = getActiveProviderEntry();
+    const currentProvider = activeEntry?.provider || apiProvider;
+    const currentConfig = activeEntry?.config || providerConfigs[currentProvider];
+
+    let effectiveApiKey = currentConfig?.apiKey || '';
+    if (!effectiveApiKey) {
+      const secureApiKey = activeEntry
+        ? (await SecureStorage.getApiKeyForEntry(activeEntry.id)) || (await SecureStorage.getApiKey(currentProvider))
+        : await SecureStorage.getApiKey(currentProvider);
+      effectiveApiKey = secureApiKey || '';
+    }
+
+    if (!effectiveApiKey && currentProvider !== 'ollama' && currentProvider !== 'anthropic') {
       alert('请先在设置中配置 API Key');
       return;
     }

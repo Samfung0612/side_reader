@@ -275,6 +275,17 @@ export class SecureStorage {
   }
 
   /**
+   * 使用 Provider Entry ID 存储 API Key
+   */
+  static async storeApiKeyForEntry(
+    entryId: string,
+    apiKey: string,
+    password?: string
+  ): Promise<{ success: boolean; error?: string }> {
+    return this.storeApiKey(entryId, apiKey, password);
+  }
+
+  /**
    * 获取 API Key
    */
   static async getApiKey(provider: string): Promise<string | null> {
@@ -320,6 +331,13 @@ export class SecureStorage {
   }
 
   /**
+   * 使用 Provider Entry ID 获取 API Key
+   */
+  static async getApiKeyForEntry(entryId: string): Promise<string | null> {
+    return this.getApiKey(entryId);
+  }
+
+  /**
    * 删除 API Key
    */
   static async deleteApiKey(provider: string): Promise<void> {
@@ -330,6 +348,44 @@ export class SecureStorage {
     const { encryptedApiKeys = {} } = await chrome.storage.local.get('encryptedApiKeys');
     delete encryptedApiKeys[provider];
     await chrome.storage.local.set({ encryptedApiKeys });
+  }
+
+  /**
+   * 使用 Provider Entry ID 删除 API Key
+   */
+  static async deleteApiKeyForEntry(entryId: string): Promise<void> {
+    await this.deleteApiKey(entryId);
+  }
+
+  /**
+   * 将旧的 provider-keyed 密钥迁移到 entry-id keyed
+   */
+  static async migrateProviderKeysToEntries(mapping: Record<string, string>): Promise<void> {
+    const { encryptedApiKeys = {} } = await chrome.storage.local.get('encryptedApiKeys');
+    let updated = false;
+
+    for (const [provider, entryId] of Object.entries(mapping)) {
+      if (!provider || !entryId) continue;
+      if (encryptedApiKeys[entryId]) continue;
+      if (!encryptedApiKeys[provider]) continue;
+
+      encryptedApiKeys[entryId] = encryptedApiKeys[provider];
+      delete encryptedApiKeys[provider];
+
+      if (this.sessionCache.has(provider) && !this.sessionCache.has(entryId)) {
+        const value = this.sessionCache.get(provider);
+        if (value) {
+          this.sessionCache.set(entryId, value);
+        }
+        this.sessionCache.delete(provider);
+      }
+
+      updated = true;
+    }
+
+    if (updated) {
+      await chrome.storage.local.set({ encryptedApiKeys });
+    }
   }
 
   /**
