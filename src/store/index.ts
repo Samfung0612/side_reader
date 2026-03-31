@@ -144,6 +144,7 @@ export interface ProviderEntry {
   name: string;
   provider: ApiProvider;
   config: ProviderConfig;
+  models: string[];
   createdAt: number;
   updatedAt: number;
 }
@@ -152,6 +153,7 @@ export interface ProviderEntryInput {
   name: string;
   provider: ApiProvider;
   config?: Partial<ProviderConfig>;
+  models?: string[];
 }
 
 interface AppState {
@@ -266,16 +268,32 @@ const getProviderDisplayName = (provider: ApiProvider): string => {
 
 const createProviderEntry = (input: ProviderEntryInput): ProviderEntry => {
   const now = Date.now();
+  const config = {
+    ...defaultProviderConfigs[input.provider],
+    ...(input.config || {}),
+  };
+  const models = Array.from(new Set([...(input.models || []), config.model].filter(Boolean)));
+
   return {
     id: uuidv4(),
     name: input.name,
     provider: input.provider,
-    config: {
-      ...defaultProviderConfigs[input.provider],
-      ...(input.config || {}),
-    },
+    config,
+    models,
     createdAt: now,
     updatedAt: now,
+  };
+};
+
+const normalizeProviderEntry = (entry: ProviderEntry): ProviderEntry => {
+  const models = Array.from(new Set([...(entry.models || []), entry.config.model].filter(Boolean)));
+  return {
+    ...entry,
+    models,
+    config: {
+      ...entry.config,
+      model: entry.config.model || models[0] || '',
+    },
   };
 };
 
@@ -326,12 +344,15 @@ export const useStore = create<AppState>()(
         if (targetEntry) {
           providerEntries = state.providerEntries.map((entry) => {
             if (entry.id !== targetEntry.id) return entry;
+            const nextConfig = {
+              ...entry.config,
+              ...config,
+            };
+            const nextModels = Array.from(new Set([...(entry.models || []), nextConfig.model].filter(Boolean)));
             return {
               ...entry,
-              config: {
-                ...entry.config,
-                ...config,
-              },
+              config: nextConfig,
+              models: nextModels,
               updatedAt: Date.now(),
             };
           });
@@ -373,12 +394,14 @@ export const useStore = create<AppState>()(
             ...entry.config,
             ...(updates.config || {}),
           };
+          const nextModels = Array.from(new Set([...(updates.models || entry.models || []), nextConfig.model].filter(Boolean)));
 
           return {
             ...entry,
             name: updates.name !== undefined ? updates.name : entry.name,
             provider: nextProvider,
             config: nextConfig,
+            models: nextModels,
             updatedAt: now,
           };
         });
@@ -1153,6 +1176,7 @@ export const useStore = create<AppState>()(
                 ...defaultProviderConfigs[provider as ApiProvider],
                 ...cfg,
               },
+              models: [cfg.model],
               createdAt: now,
               updatedAt: now,
             }));
@@ -1167,6 +1191,8 @@ export const useStore = create<AppState>()(
             ];
           }
         }
+
+        providerEntries = providerEntries.map((entry) => normalizeProviderEntry(entry));
 
         if (!activeProviderEntryId || !providerEntries.some((entry) => entry.id === activeProviderEntryId)) {
           const activeEntry = providerEntries.find((entry) => entry.provider === state.apiProvider) || providerEntries[0] || null;
@@ -1190,7 +1216,7 @@ export const useStore = create<AppState>()(
 
         const entries = state.providerEntries || [];
         const nextEntries = entries.length > 0
-          ? entries
+          ? entries.map((entry) => normalizeProviderEntry(entry))
           : [
               createProviderEntry({
                 name: `${getProviderDisplayName(state.apiProvider)} 1`,

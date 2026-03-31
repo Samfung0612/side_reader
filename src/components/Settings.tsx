@@ -31,6 +31,7 @@ export function Settings() {
   const [localApiKey, setLocalApiKey] = useState(currentConfig.apiKey || '');
   const [localBaseUrl, setLocalBaseUrl] = useState(currentConfig.baseUrl || '');
   const [localModel, setLocalModel] = useState(currentConfig.model || '');
+  const [localModels, setLocalModels] = useState<string[]>(activeEntry?.models || [currentConfig.model].filter(Boolean));
 
   const [availableModels, setAvailableModels] = useState<ModelInfo[]>([]);
   const [isLoadingModels, setIsLoadingModels] = useState(false);
@@ -135,6 +136,7 @@ export function Settings() {
     setLocalApiProvider(entry.provider);
     setLocalBaseUrl(entry.config.baseUrl);
     setLocalModel(entry.config.model);
+    setLocalModels(entry.models?.length ? entry.models : [entry.config.model].filter(Boolean));
 
     if (hasMasterPassword && isUnlocked) {
       const secureKey = await SecureStorage.getApiKeyForEntry(entry.id) || await SecureStorage.getApiKey(entry.provider);
@@ -208,6 +210,7 @@ export function Settings() {
 
     setLocalBaseUrl(newConfig.baseUrl);
     setLocalModel(newConfig.model);
+    setLocalModels([newConfig.model].filter(Boolean));
 
     if (hasMasterPassword && isUnlocked && entry) {
       const secureKey = await SecureStorage.getApiKeyForEntry(entry.id) || await SecureStorage.getApiKey(newProvider);
@@ -281,6 +284,22 @@ export function Settings() {
 
     await SecureStorage.deleteApiKeyForEntry(entryId);
     removeProviderEntry(entryId);
+  };
+
+  const handleAddModelToList = (modelName: string) => {
+    const model = modelName.trim();
+    if (!model) return;
+    setLocalModels((prev) => (prev.includes(model) ? prev : [...prev, model]));
+  };
+
+  const handleRemoveModelFromList = (modelName: string) => {
+    setLocalModels((prev) => {
+      const nextModels = prev.filter((model) => model !== modelName);
+      if (localModel === modelName) {
+        setLocalModel(nextModels[0] || '');
+      }
+      return nextModels;
+    });
   };
 
   const fetchModels = async () => {
@@ -455,14 +474,19 @@ export function Settings() {
       await SecureStorage.storeApiKeyForEntry(selectedEntry.id, localApiKey);
     }
 
+    const fallbackModel = defaultProviderConfigs[provider].model;
+    const finalModel = localModel || localModels[0] || fallbackModel;
+    const finalModels = Array.from(new Set([...(localModels || []), finalModel].filter(Boolean)));
+
     updateProviderEntry(selectedEntry.id, {
       name: localProviderName || selectedEntry.name,
       provider,
       config: {
         apiKey: hasMasterPassword ? '' : localApiKey,
         baseUrl: localBaseUrl,
-        model: localModel,
+        model: finalModel,
       },
+      models: finalModels,
     });
     setActiveProviderEntry(selectedEntry.id);
     setIsSettingsOpen(false);
@@ -651,7 +675,11 @@ export function Settings() {
           </div>
           <select
             value={localModel}
-            onChange={(e) => setLocalModel(e.target.value)}
+            onChange={(e) => {
+              const selected = e.target.value;
+              setLocalModel(selected);
+              handleAddModelToList(selected);
+            }}
             disabled={isLoadingModels}
             aria-label="模型选择"
             className="w-full px-3 py-2 bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-700 rounded-md focus:outline-none focus:ring-2 focus:ring-accent focus:border-transparent disabled:bg-gray-50 disabled:dark:bg-gray-800"
@@ -665,6 +693,48 @@ export function Settings() {
           {modelError && (
             <p className="text-xs text-red-500 mt-1">{modelError}</p>
           )}
+
+          <div className="space-y-2 pt-2">
+            <div className="flex items-center justify-between">
+              <p className="text-xs font-medium text-gray-600 dark:text-gray-300">已保存模型列表</p>
+              <button
+                type="button"
+                onClick={() => handleAddModelToList(localModel)}
+                disabled={!localModel}
+                className="text-xs px-2 py-1 rounded-md border border-gray-300 dark:border-gray-700 hover:bg-gray-100 dark:hover:bg-gray-800 disabled:opacity-50"
+              >
+                添加当前模型
+              </button>
+            </div>
+            {localModels.length === 0 ? (
+              <p className="text-xs text-gray-500">当前未保存模型，先从上方选择一个模型。</p>
+            ) : (
+              <div className="flex flex-wrap gap-2">
+                {localModels.map((model) => (
+                  <div
+                    key={model}
+                    className={`inline-flex items-center gap-1 px-2 py-1 rounded-md text-xs border ${model === localModel ? 'bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-900/20 dark:text-blue-300 dark:border-blue-800' : 'bg-gray-50 text-gray-700 border-gray-200 dark:bg-gray-800 dark:text-gray-300 dark:border-gray-700'}`}
+                  >
+                    <button
+                      type="button"
+                      onClick={() => setLocalModel(model)}
+                      className="hover:underline"
+                    >
+                      {model}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleRemoveModelFromList(model)}
+                      className="text-red-500 hover:text-red-600"
+                      aria-label={`删除模型 ${model}`}
+                    >
+                      ×
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
 
         {/* Security Settings */}

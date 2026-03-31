@@ -18,6 +18,9 @@ export function Header() {
     createNewSession, getCurrentSession,
     getCurrentAgent,
     isAgentDrawerOpen, setIsAgentDrawerOpen,
+    activeProviderEntryId,
+    providerEntries,
+    updateProviderEntry,
   } = useStore();
 
   const [isRefreshing, setIsRefreshing] = useState(false);
@@ -25,6 +28,19 @@ export function Header() {
   const currentSession = getCurrentSession();
   const currentAgent = getCurrentAgent();
   const AgentIcon = iconMap[currentAgent.icon] || Bot;
+  const activeProviderEntry = providerEntries.find((entry) => entry.id === activeProviderEntryId) || providerEntries[0] || null;
+  const activeModels = activeProviderEntry?.models?.length
+    ? activeProviderEntry.models
+    : (activeProviderEntry?.config.model ? [activeProviderEntry.config.model] : []);
+
+  const handleModelChange = (nextModel: string) => {
+    if (!activeProviderEntry) return;
+    const nextModels = Array.from(new Set([...(activeProviderEntry.models || []), nextModel].filter(Boolean)));
+    updateProviderEntry(activeProviderEntry.id, {
+      config: { model: nextModel },
+      models: nextModels,
+    });
+  };
 
   const extractContext = useCallback(async () => {
     try {
@@ -173,6 +189,21 @@ export function Header() {
       </div>
 
       <div className="flex items-center gap-1 shrink-0">
+        {activeProviderEntry && activeModels.length > 0 && (
+          <select
+            value={activeProviderEntry.config.model}
+            onChange={(e) => handleModelChange(e.target.value)}
+            aria-label="快速切换模型"
+            className="max-w-[150px] md:max-w-[200px] text-xs px-2 py-1.5 rounded-md border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-700 dark:text-gray-200"
+            title="快速切换模型"
+          >
+            {activeModels.map((model) => (
+              <option key={model} value={model}>
+                {model}
+              </option>
+            ))}
+          </select>
+        )}
         {currentSession?.messages.length ? (
           <button
             onClick={() => createNewSession()}
