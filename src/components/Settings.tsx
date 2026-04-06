@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useStore, ApiProvider, defaultProviderConfigs } from '../store';
+import { useStore, ApiProvider, ProviderEntry, defaultProviderConfigs } from '../store';
 import { Save, ArrowLeft, RefreshCw, Lock, Shield, Eye, EyeOff, Trash2, Key, Database, Download } from 'lucide-react';
 import SecureStorage from '../utils/secureStorage';
 import { calculateStorageSize, clearIndexedDbCache, formatBytes } from '../utils/storageUtils';
@@ -11,14 +11,28 @@ interface ModelInfo {
 }
 
 export function Settings() {
-  const { apiProvider, providerConfigs, setSettings, setActiveProvider, setIsSettingsOpen } = useStore();
-  const [localApiProvider, setLocalApiProvider] = useState<string>(apiProvider || 'gemini');
+  const {
+    apiProvider,
+    providerConfigs,
+    providerEntries,
+    activeProviderEntryId,
+    addProviderEntry,
+    updateProviderEntry,
+    removeProviderEntry,
+    setActiveProviderEntry,
+    setIsSettingsOpen,
+  } = useStore();
 
-  // Initialize local state with the config of the currently selected provider
-  const currentConfig = providerConfigs[localApiProvider as ApiProvider] || defaultProviderConfigs[localApiProvider as ApiProvider] || defaultProviderConfigs['gemini'];
-  const [localApiKey, setLocalApiKey] = useState(currentConfig.apiKey);
-  const [localBaseUrl, setLocalBaseUrl] = useState(currentConfig.baseUrl);
-  const [localModel, setLocalModel] = useState(currentConfig.model);
+  const activeEntry = providerEntries.find((entry) => entry.id === activeProviderEntryId) || providerEntries[0] || null;
+  const [selectedProviderEntryId, setSelectedProviderEntryId] = useState<string | null>(activeEntry?.id || null);
+  const [localProviderName, setLocalProviderName] = useState(activeEntry?.name || '');
+  const [localApiProvider, setLocalApiProvider] = useState<ApiProvider>(activeEntry?.provider || apiProvider || 'gemini');
+  const currentConfig = activeEntry?.config || providerConfigs[localApiProvider] || defaultProviderConfigs[localApiProvider] || defaultProviderConfigs['gemini'];
+  const [localApiKey, setLocalApiKey] = useState(currentConfig.apiKey || '');
+  const [localBaseUrl, setLocalBaseUrl] = useState(currentConfig.baseUrl || '');
+  const [localModel, setLocalModel] = useState(currentConfig.model || '');
+  const [localModels, setLocalModels] = useState<string[]>(activeEntry?.models || [currentConfig.model].filter(Boolean));
+  const [selectedFetchedModel, setSelectedFetchedModel] = useState('');
 
   const [availableModels, setAvailableModels] = useState<ModelInfo[]>([]);
   const [isLoadingModels, setIsLoadingModels] = useState(false);
@@ -44,6 +58,21 @@ export function Settings() {
   useEffect(() => {
     checkSecurityStatus();
   }, []);
+
+  useEffect(() => {
+    const migrateSecureKeys = async () => {
+      if (providerEntries.length === 0) return;
+      const mapping: Record<string, string> = {};
+      for (const entry of providerEntries) {
+        if (!mapping[entry.provider]) {
+          mapping[entry.provider] = entry.id;
+        }
+      }
+      await SecureStorage.migrateProviderKeysToEntries(mapping);
+    };
+
+    migrateSecureKeys();
+  }, [providerEntries]);
 
   // Calculate cache size on mount
   useEffect(() => {
@@ -101,6 +130,7 @@ export function Settings() {
     }
   };
 
+<<<<<<< HEAD
   const handleDeleteHistoryOlderThan = async (days: number) => {
     const label = `超过 ${days} 天`;
     if (!window.confirm(`确定要删除${label}的对话记录吗？此操作不可恢复。`)) return;
@@ -128,9 +158,49 @@ export function Settings() {
   };
 
   // Load API key from secure storage when provider changes
+=======
+  const loadEditorFromEntry = async (entry: ProviderEntry | null) => {
+    if (!entry) return;
+    setSelectedProviderEntryId(entry.id);
+    setLocalProviderName(entry.name);
+    setLocalApiProvider(entry.provider);
+    setLocalBaseUrl(entry.config.baseUrl);
+    setLocalModel(entry.config.model);
+    setLocalModels(entry.models?.length ? entry.models : [entry.config.model].filter(Boolean));
+    setSelectedFetchedModel('');
+
+    if (hasMasterPassword && isUnlocked) {
+      const secureKey = await SecureStorage.getApiKeyForEntry(entry.id) || await SecureStorage.getApiKey(entry.provider);
+      setLocalApiKey(secureKey || entry.config.apiKey || '');
+    } else {
+      setLocalApiKey(entry.config.apiKey || '');
+    }
+  };
+
+  // Load API key from secure storage when provider selection changes
+>>>>>>> 577263fb4ff3e01cb2b1efe98b8d265c7b6ca135
   useEffect(() => {
     loadApiKeyFromSecureStorage();
-  }, [localApiProvider, isUnlocked]);
+  }, [selectedProviderEntryId, isUnlocked]);
+
+  useEffect(() => {
+    if (providerEntries.length === 0) {
+      const id = addProviderEntry({
+        name: 'Google Gemini 1',
+        provider: 'gemini',
+      });
+      setSelectedProviderEntryId(id);
+      return;
+    }
+
+    const selected = providerEntries.find((entry) => entry.id === selectedProviderEntryId);
+    if (!selected) {
+      const next = providerEntries.find((entry) => entry.id === activeProviderEntryId) || providerEntries[0];
+      if (next) {
+        loadEditorFromEntry(next);
+      }
+    }
+  }, [providerEntries, activeProviderEntryId]);
 
   const checkSecurityStatus = async () => {
     const hasPassword = await SecureStorage.hasMasterPassword();
@@ -143,42 +213,45 @@ export function Settings() {
   };
 
   const loadApiKeyFromSecureStorage = async () => {
+    const entry = providerEntries.find((item) => item.id === selectedProviderEntryId)
+      || providerEntries.find((item) => item.id === activeProviderEntryId)
+      || providerEntries[0]
+      || null;
+
+    if (!entry) return;
+
     if (hasMasterPassword && isUnlocked) {
-      const provider = localApiProvider as ApiProvider;
-      const secureKey = await SecureStorage.getApiKey(provider);
-      if (secureKey) {
-        setLocalApiKey(secureKey);
-      } else {
-        // Fallback to store config if not in secure storage
-        const config = providerConfigs[provider] || defaultProviderConfigs[provider];
-        setLocalApiKey(config?.apiKey || '');
-      }
-    } else {
-      // Use store config if no security or not unlocked
-      const config = providerConfigs[localApiProvider as ApiProvider] || defaultProviderConfigs[localApiProvider as ApiProvider];
-      setLocalApiKey(config?.apiKey || '');
+      const secureKey = await SecureStorage.getApiKeyForEntry(entry.id) || await SecureStorage.getApiKey(entry.provider);
+      setLocalApiKey(secureKey || entry.config.apiKey || '');
+      return;
     }
+
+    setLocalApiKey(entry.config.apiKey || '');
   };
 
-  const handleProviderChange = async (e: React.ChangeEvent<HTMLSelectElement>) => {
+  const handleProviderTypeChange = async (e: React.ChangeEvent<HTMLSelectElement>) => {
     const newProvider = e.target.value as ApiProvider;
     setLocalApiProvider(newProvider);
     setModelError('');
 
-    // Load config for the new provider
-    const newConfig = providerConfigs[newProvider] || defaultProviderConfigs[newProvider];
-    if (newConfig) {
-      setLocalBaseUrl(newConfig.baseUrl);
-      setLocalModel(newConfig.model);
+    const entry = providerEntries.find((item) => item.id === selectedProviderEntryId) || null;
+    const fallbackConfig = defaultProviderConfigs[newProvider];
+    const newConfig = entry && entry.provider === newProvider
+      ? entry.config
+      : fallbackConfig;
 
-      // Load API key from secure storage if unlocked
-      if (hasMasterPassword && isUnlocked) {
-        const secureKey = await SecureStorage.getApiKey(newProvider);
-        setLocalApiKey(secureKey || newConfig.apiKey || '');
-      } else {
-        setLocalApiKey(newConfig.apiKey || '');
-      }
+    setLocalBaseUrl(newConfig.baseUrl);
+    setLocalModel(newConfig.model);
+    setLocalModels([newConfig.model].filter(Boolean));
+    setSelectedFetchedModel('');
+
+    if (hasMasterPassword && isUnlocked && entry) {
+      const secureKey = await SecureStorage.getApiKeyForEntry(entry.id) || await SecureStorage.getApiKey(newProvider);
+      setLocalApiKey(secureKey || newConfig.apiKey || '');
+      return;
     }
+
+    setLocalApiKey(newConfig.apiKey || '');
   };
 
   const handleChangePassword = async () => {
@@ -217,11 +290,59 @@ export function Settings() {
     }
   };
 
+  const handleSelectProviderEntry = async (entryId: string) => {
+    const entry = providerEntries.find((item) => item.id === entryId) || null;
+    await loadEditorFromEntry(entry);
+    setAvailableModels([]);
+    setSelectedFetchedModel('');
+    setModelError('');
+  };
+
+  const handleAddProviderEntry = async () => {
+    const provider: ApiProvider = 'gemini';
+    const count = providerEntries.filter((entry) => entry.provider === provider).length + 1;
+    const newId = addProviderEntry({
+      name: `Google Gemini ${count}`,
+      provider,
+      config: defaultProviderConfigs[provider],
+    });
+
+    setActiveProviderEntry(newId);
+    await handleSelectProviderEntry(newId);
+  };
+
+  const handleRemoveProviderEntry = async (entryId: string) => {
+    const target = providerEntries.find((entry) => entry.id === entryId);
+    if (!target) return;
+    if (!window.confirm(`确定要删除提供商「${target.name}」吗？`)) return;
+
+    await SecureStorage.deleteApiKeyForEntry(entryId);
+    removeProviderEntry(entryId);
+  };
+
+  const handleAddModelToList = (modelName: string) => {
+    const model = modelName.trim();
+    if (!model) return;
+    setLocalModels((prev) => (prev.includes(model) ? prev : [...prev, model]));
+  };
+
+  const handleRemoveModelFromList = (modelName: string) => {
+    setLocalModels((prev) => {
+      const nextModels = prev.filter((model) => model !== modelName);
+      if (localModel === modelName) {
+        setLocalModel(nextModels[0] || '');
+      }
+      return nextModels;
+    });
+  };
+
   const fetchModels = async () => {
+    const selectedEntry = providerEntries.find((entry) => entry.id === selectedProviderEntryId) || null;
+
     // Get API key - use local state or secure storage
     let apiKeyToUse = localApiKey;
-    if (hasMasterPassword && isUnlocked) {
-      const secureKey = await SecureStorage.getApiKey(localApiProvider);
+    if (hasMasterPassword && isUnlocked && selectedEntry) {
+      const secureKey = await SecureStorage.getApiKeyForEntry(selectedEntry.id) || await SecureStorage.getApiKey(localApiProvider);
       if (secureKey) apiKeyToUse = secureKey;
     }
 
@@ -257,9 +378,7 @@ export function Settings() {
             return { name: cleanName, displayName: m.displayName || cleanName };
           });
           setAvailableModels(modelsList);
-          if (modelsList.length > 0 && !modelsList.find((m: ModelInfo) => m.name === localModel)) {
-            setLocalModel(modelsList[0].name);
-          }
+          setSelectedFetchedModel('');
         } else {
           throw new Error('Invalid response format');
         }
@@ -270,9 +389,7 @@ export function Settings() {
           { name: 'claude-3-opus-20240229', displayName: 'Claude 3 Opus' },
         ];
         setAvailableModels(modelsList);
-        if (!modelsList.find((m: ModelInfo) => m.name === localModel)) {
-          setLocalModel(modelsList[0].name);
-        }
+        setSelectedFetchedModel('');
       } else if (localApiProvider === 'ollama') {
         let url = `${cleanBaseUrl}/api/tags`;
         if (cleanBaseUrl.endsWith('/v1')) {
@@ -289,9 +406,7 @@ export function Settings() {
             displayName: m.name
           }));
           setAvailableModels(modelsList);
-          if (modelsList.length > 0 && !modelsList.find((m: ModelInfo) => m.name === localModel)) {
-            setLocalModel(modelsList[0].name);
-          }
+          setSelectedFetchedModel('');
         } else {
           throw new Error('Invalid response format');
         }
@@ -314,9 +429,7 @@ export function Settings() {
             displayName: m.id
           }));
           setAvailableModels(modelsList);
-          if (modelsList.length > 0 && !modelsList.find((m: ModelInfo) => m.name === localModel)) {
-            setLocalModel(modelsList[0].name);
-          }
+          setSelectedFetchedModel('');
         } else {
           throw new Error('Invalid response format');
         }
@@ -375,19 +488,33 @@ export function Settings() {
 
   const handleSave = async () => {
     const provider = localApiProvider as ApiProvider;
+    const selectedEntry = providerEntries.find((entry) => entry.id === selectedProviderEntryId);
+
+    if (!selectedEntry) {
+      setSecurityMessage({ type: 'error', text: '未找到可保存的提供商配置' });
+      return;
+    }
 
     // Save API key to secure storage if security is enabled
     if (hasMasterPassword && isUnlocked && localApiKey) {
-      await SecureStorage.storeApiKey(provider, localApiKey);
+      await SecureStorage.storeApiKeyForEntry(selectedEntry.id, localApiKey);
     }
 
-    // Save other settings to regular storage
-    setActiveProvider(provider);
-    setSettings(provider, {
-      apiKey: hasMasterPassword ? '' : localApiKey, // Don't store in regular storage if secured
-      baseUrl: localBaseUrl,
-      model: localModel,
+    const fallbackModel = defaultProviderConfigs[provider].model;
+    const finalModel = localModel || localModels[0] || fallbackModel;
+    const finalModels = Array.from(new Set([...(localModels || []), finalModel].filter(Boolean)));
+
+    updateProviderEntry(selectedEntry.id, {
+      name: localProviderName || selectedEntry.name,
+      provider,
+      config: {
+        apiKey: hasMasterPassword ? '' : localApiKey,
+        baseUrl: localBaseUrl,
+        model: finalModel,
+      },
+      models: finalModels,
     });
+    setActiveProviderEntry(selectedEntry.id);
     setIsSettingsOpen(false);
   };
 
@@ -430,14 +557,75 @@ export function Settings() {
           </div>
         )}
 
+        {/* Provider Entries */}
+        <div className="space-y-3">
+          <div className="flex items-center justify-between">
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
+              提供商列表
+            </label>
+            <button
+              onClick={handleAddProviderEntry}
+              className="text-xs px-2.5 py-1.5 rounded-md bg-accent text-white hover:bg-blue-600 transition-colors"
+            >
+              添加提供商
+            </button>
+          </div>
+          <div className="space-y-2 max-h-56 overflow-y-auto pr-1">
+            {providerEntries.map((entry) => (
+              <div
+                key={entry.id}
+                className={`p-3 rounded-lg border transition-colors ${selectedProviderEntryId === entry.id ? 'border-accent bg-blue-50/70 dark:bg-blue-900/20' : 'border-gray-200 dark:border-gray-700'}`}
+              >
+                <div className="flex items-center justify-between gap-2">
+                  <button
+                    onClick={() => handleSelectProviderEntry(entry.id)}
+                    className="text-left flex-1"
+                  >
+                    <div className="text-sm font-medium text-gray-800 dark:text-gray-200">{entry.name}</div>
+                    <div className="text-xs text-gray-500">{entry.provider} · 已保存 {entry.models?.length || 0} 个模型</div>
+                  </button>
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => setActiveProviderEntry(entry.id)}
+                      className={`text-xs px-2 py-1 rounded-md ${activeProviderEntryId === entry.id ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300' : 'bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300'}`}
+                    >
+                      {activeProviderEntryId === entry.id ? '当前使用' : '设为当前'}
+                    </button>
+                    <button
+                      onClick={() => handleRemoveProviderEntry(entry.id)}
+                      className="p-1.5 rounded-md text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20"
+                      aria-label="删除提供商"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div className="space-y-2">
+          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
+            提供商名称
+          </label>
+          <input
+            type="text"
+            value={localProviderName}
+            onChange={(e) => setLocalProviderName(e.target.value)}
+            placeholder="例如：OpenAI Work Key"
+            className="w-full px-3 py-2 bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-700 rounded-md focus:outline-none focus:ring-2 focus:ring-accent focus:border-transparent"
+          />
+        </div>
+
         {/* API Provider Selection */}
         <div className="space-y-2">
           <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
-            API 提供商
+            提供商类型
           </label>
           <select
             value={localApiProvider}
-            onChange={handleProviderChange}
+            onChange={handleProviderTypeChange}
             aria-label="API 提供商"
             className="w-full px-3 py-2 bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-700 rounded-md focus:outline-none focus:ring-2 focus:ring-accent focus:border-transparent"
           >
@@ -500,7 +688,7 @@ export function Settings() {
         <div className="space-y-2">
           <div className="flex items-center justify-between">
             <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
-              模型选择
+              可用模型
             </label>
             <button
               onClick={fetchModels}
@@ -512,12 +700,13 @@ export function Settings() {
             </button>
           </div>
           <select
-            value={localModel}
-            onChange={(e) => setLocalModel(e.target.value)}
+            value={selectedFetchedModel}
+            onChange={(e) => setSelectedFetchedModel(e.target.value)}
             disabled={isLoadingModels}
             aria-label="模型选择"
             className="w-full px-3 py-2 bg-white dark:bg-gray-900 border border-gray-300 dark:border-gray-700 rounded-md focus:outline-none focus:ring-2 focus:ring-accent focus:border-transparent disabled:bg-gray-50 disabled:dark:bg-gray-800"
           >
+            <option value="">选择一个模型加入列表</option>
             {availableModels.map((m) => (
               <option key={m.name} value={m.name}>
                 {m.displayName}
@@ -527,6 +716,51 @@ export function Settings() {
           {modelError && (
             <p className="text-xs text-red-500 mt-1">{modelError}</p>
           )}
+
+          <div className="space-y-2 pt-2">
+            <div className="flex items-center justify-between">
+              <p className="text-xs font-medium text-gray-600 dark:text-gray-300">已保存模型列表</p>
+              <button
+                type="button"
+                onClick={() => {
+                  handleAddModelToList(selectedFetchedModel);
+                  setSelectedFetchedModel('');
+                }}
+                disabled={!selectedFetchedModel}
+                className="text-xs px-2 py-1 rounded-md border border-gray-300 dark:border-gray-700 hover:bg-gray-100 dark:hover:bg-gray-800 disabled:opacity-50"
+              >
+                加入模型列表
+              </button>
+            </div>
+            {localModels.length === 0 ? (
+              <p className="text-xs text-gray-500">当前未保存模型，从上方获取后加入模型列表即可。</p>
+            ) : (
+              <div className="flex flex-wrap gap-2">
+                {localModels.map((model) => (
+                  <div
+                    key={model}
+                    className={`inline-flex items-center gap-1 px-2 py-1 rounded-md text-xs border ${model === localModel ? 'bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-900/20 dark:text-blue-300 dark:border-blue-800' : 'bg-gray-50 text-gray-700 border-gray-200 dark:bg-gray-800 dark:text-gray-300 dark:border-gray-700'}`}
+                  >
+                    <button
+                      type="button"
+                      onClick={() => setLocalModel(model)}
+                      className="hover:underline"
+                    >
+                      {model}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleRemoveModelFromList(model)}
+                      className="text-red-500 hover:text-red-600"
+                      aria-label={`删除模型 ${model}`}
+                    >
+                      ×
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
 
         {/* Security Settings */}

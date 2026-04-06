@@ -130,3 +130,29 @@ dist-ssr/
 PRD.md
 .vscode/
 .clinerules/
+
+# Sensitive/Private Data
+.env
+.env.local
+.env.*.local
+.secrets
+*.key
+*.pem
+
+# IDE & Personal Settings
+.idea/
+*.swp
+*.swo
+*~
+.vscode/
+!.vscode/settings.json
+!.vscode/extensions.json
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Build artifacts
+dist/
+build/
+*.zip

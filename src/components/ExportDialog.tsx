@@ -14,7 +14,7 @@ interface ExportDialogProps {
 }
 
 export function ExportDialog({ onClose }: ExportDialogProps) {
-  const { sessions, agents, apiProvider, providerConfigs } = useStore();
+  const { sessions, agents, apiProvider, providerConfigs, providerEntries, activeProviderEntryId } = useStore();
 
   const [format, setFormat] = useState<ExportFormat>('json');
   const [includeHistory, setIncludeHistory] = useState(true);
@@ -34,7 +34,12 @@ export function ExportDialog({ onClose }: ExportDialogProps) {
     try {
       const timestamp = new Date().toISOString().slice(0, 10);
       if (format === 'json') {
-        const content = exportAsJSON(sessions, agents, { apiProvider, providerConfigs }, options);
+        const content = exportAsJSON(sessions, agents, {
+          apiProvider,
+          providerConfigs,
+          providerEntries,
+          activeProviderEntryId,
+        }, options);
         downloadFile(content, `luminasider-export-${timestamp}.json`, 'application/json');
       } else {
         const content = exportAsMarkdown(sessions, agents, options);

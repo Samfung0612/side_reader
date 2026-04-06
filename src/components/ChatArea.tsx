@@ -3,6 +3,7 @@ import { useStore, getAttachmentBlob, defaultProviderConfigs } from '../store';
 import ReactMarkdown from 'react-markdown';
 import { Bot, User, Sparkles, Languages, BookOpen, Link, Copy, Check, FileImage, Brain, ChevronDown, ArrowDown, Ban } from 'lucide-react';
 import hljs from 'highlight.js';
+import SecureStorage from '../utils/secureStorage';
 // DOMPurify is available for future HTML sanitization needs
 
 const AttachmentView = ({ id, mimeType }: { id: string; mimeType: string }) => {
@@ -109,13 +110,15 @@ const CodeBlock = ({ className, children, node, ...props }: any) => {
 };
 
 export function ChatArea() {
-  const { getCurrentSession, pageContext, addMessage, updateMessageContent, apiProvider, providerConfigs, useContext, getCurrentAgent, isGenerating } = useStore();
+  const { getCurrentSession, pageContext, addMessage, updateMessageContent, apiProvider, providerConfigs, activeProviderEntryId, providerEntries, useContext, getCurrentAgent, isGenerating } = useStore();
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const chatContainerRef = useRef<HTMLDivElement>(null);
   const [isAtBottom, setIsAtBottom] = useState(true);
   const [showScrollButton, setShowScrollButton] = useState(false);
 
-  const currentConfig = providerConfigs[apiProvider] || defaultProviderConfigs[apiProvider] || defaultProviderConfigs['gemini'];
+  const activeEntry = providerEntries.find((entry) => entry.id === activeProviderEntryId) || providerEntries[0] || null;
+  const effectiveProvider = activeEntry?.provider || apiProvider;
+  const currentConfig = activeEntry?.config || providerConfigs[effectiveProvider] || defaultProviderConfigs[effectiveProvider] || defaultProviderConfigs['gemini'];
   const { apiKey, baseUrl, model } = currentConfig;
   const agentPrompt = getCurrentAgent().systemPrompt;
 
@@ -165,7 +168,15 @@ export function ChatArea() {
   }, [messages, isGenerating, isAtBottom, scrollToBottom]);
 
   const handleShortcut = async (promptText: string) => {
-    if (!apiKey && apiProvider !== 'ollama') {
+    let effectiveApiKey = apiKey;
+    if (!effectiveApiKey) {
+      const secureApiKey = activeEntry
+        ? (await SecureStorage.getApiKeyForEntry(activeEntry.id)) || (await SecureStorage.getApiKey(effectiveProvider))
+        : await SecureStorage.getApiKey(effectiveProvider);
+      effectiveApiKey = secureApiKey || '';
+    }
+
+    if (!effectiveApiKey && effectiveProvider !== 'ollama' && effectiveProvider !== 'anthropic') {
       alert('请先在设置中配置 API Key');
       return;
     }
@@ -187,9 +198,9 @@ export function ChatArea() {
     });
 
     try {
-      if (apiProvider === 'gemini') {
+      if (effectiveProvider === 'gemini') {
         const { GoogleGenerativeAI } = await import('@google/generative-ai');
-        const genAI = new GoogleGenerativeAI(apiKey);
+        const genAI = new GoogleGenerativeAI(effectiveApiKey);
         
         let requestOptions = {};
         if (baseUrl && baseUrl !== 'https://generativelanguage.googleapis.com/v1beta') {
@@ -269,7 +280,7 @@ export function ChatArea() {
             console.warn('Failed to extract text from chunk', e);
           }
         }
-      } else if (apiProvider === 'anthropic') {
+      } else if (effectiveProvider === 'anthropic') {
         // Anthropic (Claude) Provider
         const cleanBaseUrl = baseUrl.replace(/\/$/, '');
         const url = `${cleanBaseUrl}/messages`;

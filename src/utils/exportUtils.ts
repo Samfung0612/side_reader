@@ -1,4 +1,4 @@
-import { Session, Agent, ApiProvider, ProviderConfig } from '../store';
+import { Session, Agent, ApiProvider, ProviderConfig, ProviderEntry } from '../store';
 
 export type ExportFormat = 'json' | 'markdown';
 
@@ -17,6 +17,8 @@ export interface ExportData {
   settings?: {
     apiProvider: ApiProvider;
     providerConfigs: Partial<Record<ApiProvider, Omit<ProviderConfig, 'apiKey'> & { apiKey: '' }>>;
+    providerEntries?: Array<Omit<ProviderEntry, 'config'> & { config: Omit<ProviderConfig, 'apiKey'> & { apiKey: '' } }>;
+    activeProviderEntryId?: string | null;
   };
 }
 
@@ -53,7 +55,12 @@ export function downloadFile(content: string, filename: string, mimeType: string
 export function exportAsJSON(
   sessions: Session[],
   agents: Agent[],
-  settings: { apiProvider: ApiProvider; providerConfigs: Record<ApiProvider, ProviderConfig> },
+  settings: {
+    apiProvider: ApiProvider;
+    providerConfigs: Record<ApiProvider, ProviderConfig>;
+    providerEntries?: ProviderEntry[];
+    activeProviderEntryId?: string | null;
+  },
   options: ExportOptions
 ): string {
   const data: ExportData = {
@@ -79,6 +86,14 @@ export function exportAsJSON(
           { ...v, apiKey: '' as const },
         ])
       ) as Partial<Record<ApiProvider, Omit<ProviderConfig, 'apiKey'> & { apiKey: '' }>>,
+      providerEntries: (settings.providerEntries || []).map((entry) => ({
+        ...entry,
+        config: {
+          ...entry.config,
+          apiKey: '' as const,
+        },
+      })),
+      activeProviderEntryId: settings.activeProviderEntryId || null,
     };
   }
 

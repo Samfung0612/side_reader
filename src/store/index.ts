@@ -139,12 +139,36 @@ export interface ProviderConfig {
   model: string;
 }
 
+export interface ProviderEntry {
+  id: string;
+  name: string;
+  provider: ApiProvider;
+  config: ProviderConfig;
+  models: string[];
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface ProviderEntryInput {
+  name: string;
+  provider: ApiProvider;
+  config?: Partial<ProviderConfig>;
+  models?: string[];
+}
+
 interface AppState {
   // Settings
   apiProvider: ApiProvider;
   providerConfigs: Record<ApiProvider, ProviderConfig>;
+  providerEntries: ProviderEntry[];
+  activeProviderEntryId: string | null;
   setSettings: (provider: ApiProvider, config: Partial<ProviderConfig>) => void;
   setActiveProvider: (provider: ApiProvider) => void;
+  addProviderEntry: (entry: ProviderEntryInput) => string;
+  updateProviderEntry: (entryId: string, updates: Partial<ProviderEntryInput>) => void;
+  removeProviderEntry: (entryId: string) => void;
+  setActiveProviderEntry: (entryId: string) => void;
+  getActiveProviderEntry: () => ProviderEntry | null;
 
   // UI State
   isSettingsOpen: boolean;
@@ -230,22 +254,193 @@ export const defaultProviderConfigs: Record<ApiProvider, ProviderConfig> = {
   }
 };
 
+const getProviderDisplayName = (provider: ApiProvider): string => {
+  const names: Record<ApiProvider, string> = {
+    gemini: 'Google Gemini',
+    openai: 'OpenAI Compatible',
+    deepseek: 'DeepSeek',
+    groq: 'Groq',
+    ollama: 'Ollama',
+    anthropic: 'Anthropic',
+  };
+  return names[provider];
+};
+
+const createProviderEntry = (input: ProviderEntryInput): ProviderEntry => {
+  const now = Date.now();
+  const config = {
+    ...defaultProviderConfigs[input.provider],
+    ...(input.config || {}),
+  };
+  const models = Array.from(new Set([...(input.models || []), config.model].filter(Boolean)));
+
+  return {
+    id: uuidv4(),
+    name: input.name,
+    provider: input.provider,
+    config,
+    models,
+    createdAt: now,
+    updatedAt: now,
+  };
+};
+
+const normalizeProviderEntry = (entry: ProviderEntry): ProviderEntry => {
+  const models = Array.from(new Set([...(entry.models || []), entry.config.model].filter(Boolean)));
+  return {
+    ...entry,
+    models,
+    config: {
+      ...entry.config,
+      model: entry.config.model || models[0] || '',
+    },
+  };
+};
+
+const entriesToProviderConfigs = (entries: ProviderEntry[]): Record<ApiProvider, ProviderConfig> => {
+  const providerConfigs: Record<ApiProvider, ProviderConfig> = { ...defaultProviderConfigs };
+  for (const entry of entries) {
+    providerConfigs[entry.provider] = {
+      ...providerConfigs[entry.provider],
+      ...entry.config,
+    };
+  }
+  return providerConfigs;
+};
+
+const initialProviderEntry = createProviderEntry({
+  name: `${getProviderDisplayName('gemini')} 1`,
+  provider: 'gemini',
+});
+
 export const useStore = create<AppState>()(
   persist(
     (set, get) => ({
       // Settings
       apiProvider: 'gemini',
       providerConfigs: defaultProviderConfigs,
-      setActiveProvider: (provider) => set({ apiProvider: provider }),
-      setSettings: (provider, config) => set((state) => ({
-        providerConfigs: {
+      providerEntries: [initialProviderEntry],
+      activeProviderEntryId: initialProviderEntry.id,
+      setActiveProvider: (provider) => set((state) => {
+        const matched = state.providerEntries.find((entry) => entry.provider === provider);
+        return {
+          apiProvider: provider,
+          activeProviderEntryId: matched ? matched.id : state.activeProviderEntryId,
+        };
+      }),
+      setSettings: (provider, config) => set((state) => {
+        const providerConfigs = {
           ...state.providerConfigs,
           [provider]: {
             ...state.providerConfigs[provider],
             ...config
           }
+        };
+
+        let providerEntries = state.providerEntries;
+        const targetEntry = state.providerEntries.find((entry) => entry.id === state.activeProviderEntryId && entry.provider === provider)
+          || state.providerEntries.find((entry) => entry.provider === provider);
+
+        if (targetEntry) {
+          providerEntries = state.providerEntries.map((entry) => {
+            if (entry.id !== targetEntry.id) return entry;
+            const nextConfig = {
+              ...entry.config,
+              ...config,
+            };
+            const nextModels = Array.from(new Set([...(entry.models || []), nextConfig.model].filter(Boolean)));
+            return {
+              ...entry,
+              config: nextConfig,
+              models: nextModels,
+              updatedAt: Date.now(),
+            };
+          });
         }
-      })),
+
+        return {
+          providerConfigs,
+          providerEntries,
+        };
+      }),
+      addProviderEntry: (input) => {
+        const entryCountForProvider = get().providerEntries.filter((entry) => entry.provider === input.provider).length;
+        const nextName = input.name?.trim() || `${getProviderDisplayName(input.provider)} ${entryCountForProvider + 1}`;
+        const entry = createProviderEntry({
+          ...input,
+          name: nextName,
+        });
+
+        set((state) => {
+          const providerEntries = [...state.providerEntries, entry];
+          const providerConfigs = entriesToProviderConfigs(providerEntries);
+          return {
+            providerEntries,
+            providerConfigs,
+            activeProviderEntryId: state.activeProviderEntryId || entry.id,
+            apiProvider: state.activeProviderEntryId ? state.apiProvider : entry.provider,
+          };
+        });
+
+        return entry.id;
+      },
+      updateProviderEntry: (entryId, updates) => set((state) => {
+        const now = Date.now();
+        const providerEntries = state.providerEntries.map((entry) => {
+          if (entry.id !== entryId) return entry;
+          const nextProvider = updates.provider || entry.provider;
+          const nextConfig = {
+            ...defaultProviderConfigs[nextProvider],
+            ...entry.config,
+            ...(updates.config || {}),
+          };
+          const nextModels = Array.from(new Set([...(updates.models || entry.models || []), nextConfig.model].filter(Boolean)));
+
+          return {
+            ...entry,
+            name: updates.name !== undefined ? updates.name : entry.name,
+            provider: nextProvider,
+            config: nextConfig,
+            models: nextModels,
+            updatedAt: now,
+          };
+        });
+
+        const providerConfigs = entriesToProviderConfigs(providerEntries);
+        const activeProvider = providerEntries.find((entry) => entry.id === state.activeProviderEntryId)?.provider || state.apiProvider;
+        return {
+          providerEntries,
+          providerConfigs,
+          apiProvider: activeProvider,
+        };
+      }),
+      removeProviderEntry: (entryId) => set((state) => {
+        const providerEntries = state.providerEntries.filter((entry) => entry.id !== entryId);
+        const nextActiveProviderEntryId = state.activeProviderEntryId === entryId
+          ? (providerEntries[0]?.id || null)
+          : state.activeProviderEntryId;
+        const activeEntry = providerEntries.find((entry) => entry.id === nextActiveProviderEntryId) || providerEntries[0] || null;
+        return {
+          providerEntries,
+          activeProviderEntryId: nextActiveProviderEntryId,
+          providerConfigs: entriesToProviderConfigs(providerEntries),
+          apiProvider: activeEntry?.provider || 'gemini',
+        };
+      }),
+      setActiveProviderEntry: (entryId) => set((state) => {
+        const entry = state.providerEntries.find((item) => item.id === entryId);
+        if (!entry) return state;
+        return {
+          activeProviderEntryId: entryId,
+          apiProvider: entry.provider,
+        };
+      }),
+      getActiveProviderEntry: () => {
+        const state = get();
+        return state.providerEntries.find((entry) => entry.id === state.activeProviderEntryId)
+          || state.providerEntries[0]
+          || null;
+      },
 
       // UI State
       isSettingsOpen: false,
@@ -493,9 +688,12 @@ export const useStore = create<AppState>()(
 
       generateResponse: async (userMessage?: string, stagedAttachments?: Array<{ file: File; base64: string }>) => {
         const state = get();
-        const { apiProvider, providerConfigs, getCurrentAgent, getCurrentSession, useContext, pageContext, addMessage, updateMessageContent, setAbortController } = state;
-
-        const currentConfig = providerConfigs[apiProvider];
+        const { getCurrentAgent, getCurrentSession, useContext, pageContext, addMessage, updateMessageContent, setAbortController } = state;
+        const activeEntry = state.providerEntries.find((entry) => entry.id === state.activeProviderEntryId)
+          || state.providerEntries[0]
+          || null;
+        const apiProvider = activeEntry?.provider || state.apiProvider;
+        const currentConfig = activeEntry?.config || state.providerConfigs[apiProvider] || defaultProviderConfigs[apiProvider];
         const { baseUrl, model } = currentConfig;
 
         // Use secure API key if available, otherwise fallback to stored key
@@ -506,7 +704,9 @@ export const useStore = create<AppState>()(
           if (hasPassword) {
             const unlocked = await SecureStorage.checkUnlocked();
             if (unlocked) {
-              const secureKey = await SecureStorage.getApiKey(apiProvider);
+              const secureKey = activeEntry
+                ? (await SecureStorage.getApiKey(activeEntry.id)) || (await SecureStorage.getApiKey(apiProvider))
+                : await SecureStorage.getApiKey(apiProvider);
               if (secureKey) apiKey = secureKey;
             }
           }
@@ -941,12 +1141,12 @@ export const useStore = create<AppState>()(
       name: 'luminasider-storage',
       storage: createJSONStorage(() => chromeStorage),
       partialize: (state) => {
-        // Migration logic for old state format
         const anyState = state as any;
         let providerConfigs = state.providerConfigs;
+        let providerEntries = state.providerEntries;
+        let activeProviderEntryId = state.activeProviderEntryId;
 
         if (anyState.apiKey !== undefined && anyState.baseUrl !== undefined && anyState.model !== undefined) {
-          // Migrate old flat config to the active provider
           providerConfigs = {
             ...defaultProviderConfigs,
             [state.apiProvider]: {
@@ -957,15 +1157,83 @@ export const useStore = create<AppState>()(
           };
         }
 
+        if (!providerEntries || providerEntries.length === 0) {
+          const now = Date.now();
+          providerEntries = Object.entries(providerConfigs)
+            .filter(([provider, cfg]) => {
+              const typedProvider = provider as ApiProvider;
+              const defaultCfg = defaultProviderConfigs[typedProvider];
+              return typedProvider === state.apiProvider
+                || Boolean(cfg.apiKey)
+                || cfg.baseUrl !== defaultCfg.baseUrl
+                || cfg.model !== defaultCfg.model;
+            })
+            .map(([provider, cfg], index) => ({
+              id: uuidv4(),
+              name: `${getProviderDisplayName(provider as ApiProvider)} ${index + 1}`,
+              provider: provider as ApiProvider,
+              config: {
+                ...defaultProviderConfigs[provider as ApiProvider],
+                ...cfg,
+              },
+              models: [cfg.model],
+              createdAt: now,
+              updatedAt: now,
+            }));
+
+          if (providerEntries.length === 0) {
+            providerEntries = [
+              createProviderEntry({
+                name: `${getProviderDisplayName(state.apiProvider)} 1`,
+                provider: state.apiProvider,
+                config: providerConfigs[state.apiProvider],
+              }),
+            ];
+          }
+        }
+
+        providerEntries = providerEntries.map((entry) => normalizeProviderEntry(entry));
+
+        if (!activeProviderEntryId || !providerEntries.some((entry) => entry.id === activeProviderEntryId)) {
+          const activeEntry = providerEntries.find((entry) => entry.provider === state.apiProvider) || providerEntries[0] || null;
+          activeProviderEntryId = activeEntry ? activeEntry.id : null;
+        }
+
         return {
           apiProvider: state.apiProvider,
-          providerConfigs,
+          providerConfigs: entriesToProviderConfigs(providerEntries),
+          providerEntries,
+          activeProviderEntryId,
           useContext: state.useContext,
           sessions: state.sessions,
           currentSessionId: state.currentSessionId,
           agents: state.agents,
           currentAgentId: state.currentAgentId,
         } as any;
+      },
+      onRehydrateStorage: () => (state) => {
+        if (!state) return;
+
+        const entries = state.providerEntries || [];
+        const nextEntries = entries.length > 0
+          ? entries.map((entry) => normalizeProviderEntry(entry))
+          : [
+              createProviderEntry({
+                name: `${getProviderDisplayName(state.apiProvider)} 1`,
+                provider: state.apiProvider,
+                config: state.providerConfigs[state.apiProvider],
+              }),
+            ];
+
+        const nextActiveEntry = nextEntries.find((entry) => entry.id === state.activeProviderEntryId)
+          || nextEntries.find((entry) => entry.provider === state.apiProvider)
+          || nextEntries[0]
+          || null;
+
+        state.providerEntries = nextEntries;
+        state.activeProviderEntryId = nextActiveEntry ? nextActiveEntry.id : null;
+        state.apiProvider = nextActiveEntry?.provider || state.apiProvider;
+        state.providerConfigs = entriesToProviderConfigs(nextEntries);
       },
     }
   )

@@ -21,6 +21,11 @@ export function InputArea() {
   const {
     apiProvider,
     providerConfigs,
+    activeProviderEntryId,
+    getActiveProviderEntry,
+    providerEntries,
+    setActiveProviderEntry,
+    updateProviderEntry,
     addMessage,
     useContext,
     setUseContext,
@@ -33,7 +38,7 @@ export function InputArea() {
   // Check secure storage for API key
   useEffect(() => {
     loadSecureApiKey();
-  }, [apiProvider]);
+  }, [apiProvider, activeProviderEntryId]);
 
   const loadSecureApiKey = async () => {
     const hasPassword = await SecureStorage.hasMasterPassword();
@@ -58,6 +63,11 @@ export function InputArea() {
     text: agentPlaceholder,
     isClickable: isClickable
   };
+
+  const activeProviderEntry = providerEntries.find((entry) => entry.id === activeProviderEntryId) || getActiveProviderEntry();
+  const activeModels = activeProviderEntry?.models?.length
+    ? activeProviderEntry.models
+    : (activeProviderEntry?.config.model ? [activeProviderEntry.config.model] : []);
 
   useEffect(() => {
     if (textareaRef.current) {
@@ -169,8 +179,19 @@ export function InputArea() {
       return;
     }
 
-    const currentConfig = providerConfigs[apiProvider];
-    if (!currentConfig.apiKey && apiProvider !== 'ollama') {
+    const activeEntry = getActiveProviderEntry();
+    const currentProvider = activeEntry?.provider || apiProvider;
+    const currentConfig = activeEntry?.config || providerConfigs[currentProvider];
+
+    let effectiveApiKey = currentConfig?.apiKey || '';
+    if (!effectiveApiKey) {
+      const secureApiKey = activeEntry
+        ? (await SecureStorage.getApiKeyForEntry(activeEntry.id)) || (await SecureStorage.getApiKey(currentProvider))
+        : await SecureStorage.getApiKey(currentProvider);
+      effectiveApiKey = secureApiKey || '';
+    }
+
+    if (!effectiveApiKey && currentProvider !== 'ollama' && currentProvider !== 'anthropic') {
       alert('请先在设置中配置 API Key');
       return;
     }
@@ -240,8 +261,19 @@ export function InputArea() {
     }
 
     // 直接使用占位符文本发送消息
-    const currentConfig = providerConfigs[apiProvider];
-    if (!currentConfig.apiKey && apiProvider !== 'ollama') {
+    const activeEntry = getActiveProviderEntry();
+    const currentProvider = activeEntry?.provider || apiProvider;
+    const currentConfig = activeEntry?.config || providerConfigs[currentProvider];
+
+    let effectiveApiKey = currentConfig?.apiKey || '';
+    if (!effectiveApiKey) {
+      const secureApiKey = activeEntry
+        ? (await SecureStorage.getApiKeyForEntry(activeEntry.id)) || (await SecureStorage.getApiKey(currentProvider))
+        : await SecureStorage.getApiKey(currentProvider);
+      effectiveApiKey = secureApiKey || '';
+    }
+
+    if (!effectiveApiKey && currentProvider !== 'ollama' && currentProvider !== 'anthropic') {
       alert('请先在设置中配置 API Key');
       return;
     }
@@ -270,6 +302,15 @@ export function InputArea() {
     if (input.trim() === '') {
       setShowPlaceholderOverlay(true);
     }
+  };
+
+  const handleModelChange = (nextModel: string) => {
+    if (!activeProviderEntry) return;
+    const nextModels = Array.from(new Set([...(activeProviderEntry.models || []), nextModel].filter(Boolean)));
+    updateProviderEntry(activeProviderEntry.id, {
+      config: { model: nextModel },
+      models: nextModels,
+    });
   };
 
   const isSubmitDisabled = (!input.trim() && stagedAttachments.length === 0) || isGenerating;
@@ -385,6 +426,42 @@ export function InputArea() {
           </button>
         )}
       </div>
+
+      {(activeProviderEntry || activeModels.length > 0) && (
+        <div className="mt-2 flex items-center gap-2 px-1">
+          <div className="min-w-0 flex-[0.95]">
+            <select
+              value={activeProviderEntry?.id || ''}
+              onChange={(e) => setActiveProviderEntry(e.target.value)}
+              aria-label="底部提供商切换"
+              className="w-full min-w-0 text-xs px-2.5 py-1.5 rounded-md border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-700 dark:text-gray-200"
+            >
+              {providerEntries.map((entry) => (
+                <option key={entry.id} value={entry.id}>
+                  {entry.name}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {activeModels.length > 0 && (
+            <div className="min-w-0 flex-[1.05]">
+              <select
+                value={activeProviderEntry?.config.model || ''}
+                onChange={(e) => handleModelChange(e.target.value)}
+                aria-label="底部模型切换"
+                className="w-full min-w-0 text-xs px-2.5 py-1.5 rounded-md border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-700 dark:text-gray-200"
+              >
+                {activeModels.map((model) => (
+                  <option key={model} value={model}>
+                    {model}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }
