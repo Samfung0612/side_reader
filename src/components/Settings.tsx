@@ -130,35 +130,6 @@ export function Settings() {
     }
   };
 
-<<<<<<< HEAD
-  const handleDeleteHistoryOlderThan = async (days: number) => {
-    const label = `超过 ${days} 天`;
-    if (!window.confirm(`确定要删除${label}的对话记录吗？此操作不可恢复。`)) return;
-
-    setIsClearingCache(true);
-    try {
-      const now = Date.now();
-      const cutoff = now - days * 24 * 60 * 60 * 1000;
-      const targetSessions = sessions.filter((session) => session.updatedAt < cutoff);
-
-      if (targetSessions.length === 0) {
-        window.alert(`没有${label}的对话记录。`);
-        return;
-      }
-
-      for (const session of targetSessions) {
-        await deleteSession(session.id);
-      }
-
-      await refreshCacheSize();
-      window.alert(`已删除 ${targetSessions.length} 个${label}的对话。`);
-    } finally {
-      setIsClearingCache(false);
-    }
-  };
-
-  // Load API key from secure storage when provider changes
-=======
   const loadEditorFromEntry = async (entry: ProviderEntry | null) => {
     if (!entry) return;
     setSelectedProviderEntryId(entry.id);
@@ -178,7 +149,6 @@ export function Settings() {
   };
 
   // Load API key from secure storage when provider selection changes
->>>>>>> 577263fb4ff3e01cb2b1efe98b8d265c7b6ca135
   useEffect(() => {
     loadApiKeyFromSecureStorage();
   }, [selectedProviderEntryId, isUnlocked]);
